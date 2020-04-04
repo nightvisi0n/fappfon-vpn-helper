@@ -1,4 +1,4 @@
-// fappfon-vpn-helper - Force FRITZ!App fon to work on non FRITZ!Box VPNs
+// fappfon-vpn-helper - Daemon that forces FRITZ!App Fon to work over non FRITZ!Box VPNs
 // Copyright (C) 2020  nightvisi0n <dev@jneureuther.de>
 
 // This program is free software: you can redistribute it and/or modify
@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+// FRITZ!Box and FRITZ!App Fon are trademarks of AVM Computersysteme Vertriebs GmbH, Berlin, Germany.
 package main
 
 import (
@@ -46,7 +47,7 @@ var (
 )
 
 var usage string = `
-Make FRITZ!app fon work via VPN.
+Daemon that forces FRITZ!App Fon to work over non FRITZ!Box VPNs.
 
 Usage:
   fappfon-vpn-helper -q QUEUE -d DEST
