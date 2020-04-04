@@ -1,0 +1,11 @@
+github.com/Telefonica/nfqueue v0.0.0-20181020103925-d4fef8af9783 h1:7AlMilKTJPxQezFcnfkmy/xTLnS/bir5yiwu2q4MI1M=
+github.com/Telefonica/nfqueue v0.0.0-20181020103925-d4fef8af9783/go.mod h1:9RhLhqlVUq+ugyVkMDWNa3DgXWz/MH/OM0CjvKh8/mk=
+github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815 h1:bWDMxwH3px2JBh6AyO7hdCn/PkvCZXii8TGj7sbtEbQ=
+github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815/go.mod h1:WwZ+bS3ebgob9U8Nd0kOddGdZWjyMGR8Wziv+TBNwSE=
+github.com/nightvisi0n/gopacket v1.1.18-0.20200404200224-b4ef2316430e h1:wK6UU12HbX3wH9XI9fVqFk+Y8ebfZrq3IdE4ejqGxl8=
+github.com/nightvisi0n/gopacket v1.1.18-0.20200404200224-b4ef2316430e/go.mod h1:UdDNZ1OO62aGYVnPhxT1U6aI7ukYtA/kB8vaU0diBUM=
+golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
+golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3/go.mod h1:t9HGtf8HONx5eT2rtn7q6eTqICYqUVnKs3thJo3Qplg=
+golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+golang.org/x/sys v0.0.0-20190405154228-4b34438f7a67/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
