@@ -40,10 +40,14 @@ type Queue struct {
 }
 
 var (
-	version string = "v0.0.1"
-	qid     uint16
-	destIP  net.IP
-	err     error
+	// GitSummary is the output of `git describe --tags --dirty --always`
+	GitSummary string = "undefined"
+	// BuildDate is the RFC3339 formatted UTC build date
+	BuildDate string = "undefined"
+
+	qid    uint16
+	destIP net.IP
+	err    error
 )
 
 var usage string = `
@@ -87,7 +91,8 @@ func main() {
 }
 
 func parseArgs() error {
-	arguments, err := docopt.ParseArgs(usage, nil, version)
+	versionStr := fmt.Sprintf("Version %s, built at %s", GitSummary, BuildDate)
+	arguments, err := docopt.ParseArgs(usage, nil, versionStr)
 	if err != nil {
 		return err
 	}

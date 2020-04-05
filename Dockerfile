@@ -13,13 +13,15 @@ WORKDIR /go/fappfon-vpn-helper
 
 COPY . .
 
+RUN go get github.com/ahmetb/govvv
+
 RUN CC=aarch64-linux-gnu-gcc \
     CGO_ENABLED=1 \
     GOOS=linux \
     GOARCH=arm64 \
     PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig/ \
     CGO_LDFLAGS="-L/usr/lib/aarch64-linux-gnu -lnetfilter_queue" \
-    go build .
+    govvv build .
 
 FROM arm64v8/debian:buster
 
