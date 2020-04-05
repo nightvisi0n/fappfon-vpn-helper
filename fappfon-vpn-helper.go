@@ -23,8 +23,11 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"os"
+	"os/signal"
 	"regexp"
 	"strconv"
+	"syscall"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -79,7 +82,23 @@ Options:
 `
 
 func main() {
+	var q *Queue
+
 	logrus.SetLevel(logrus.InfoLevel)
+	logrus.RegisterExitHandler(func() {
+		if q != nil {
+			_ = q.queue.Stop()
+		}
+		logrus.Infof("Stopping netfilter_queue with id '%d'\n", q.id)
+	})
+
+	sigs := make(chan os.Signal)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		logrus.Infoln("Got SIGINT, shutting down gracefully")
+		logrus.Exit(0)
+	}()
 
 	packetCounter = big.NewInt(0)
 
@@ -90,7 +109,7 @@ func main() {
 
 	logrus.Infoln("Started fappfon-vpn-helper")
 
-	q := &Queue{
+	q = &Queue{
 		id: qid,
 	}
 	queueCfg := &nfqueue.QueueConfig{
@@ -103,7 +122,6 @@ func main() {
 
 	logrus.Infof("Ready to process packets from netfilter_queue with id '%d'\n", q.id)
 
-	defer q.queue.Stop()
 	err = q.queue.Start() // blocking function
 	if err != nil {
 		if err.Error() == "Error in nfqueue_create_queue" {
