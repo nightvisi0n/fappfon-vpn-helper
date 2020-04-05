@@ -56,7 +56,7 @@ Daemon that forces FRITZ!App Fon to work over non FRITZ!Box VPNs.
 Usage:
   fappfon-vpn-helper -q QUEUE -f FIP
   fappfon-vpn-helper -h | --help
-  fappfon-vpn-helper --version
+  fappfon-vpn-helper -v | --version
 
 Options:
   -q QUEUE --queue=QUEUE  ID of netfilter_queue to attach.
