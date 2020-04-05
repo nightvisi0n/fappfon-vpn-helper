@@ -27,6 +27,7 @@ import (
 	"os/signal"
 	"regexp"
 	"strconv"
+	"sync"
 	"syscall"
 
 	"github.com/google/gopacket"
@@ -62,6 +63,7 @@ var (
 	err error
 
 	packetCounter *big.Int
+	mux           sync.Mutex
 )
 
 var usage string = `
@@ -87,6 +89,7 @@ func main() {
 	logrus.SetLevel(logrus.InfoLevel)
 	logrus.RegisterExitHandler(func() {
 		if q != nil {
+			mux.Lock()
 			_ = q.queue.Stop()
 			logrus.Infof("Stopping netfilter_queue with id '%d'\n", q.id)
 		}
@@ -169,8 +172,11 @@ func parseArgs() error {
 
 // Handle a nfqueue packet. It implements nfqueue.PacketHandler interface.
 func (q *Queue) Handle(p *nfqueue.Packet) {
+	mux.Lock()
+
 	defer func() {
 		packetCounter = packetCounter.Add(packetCounter, big.NewInt(1))
+		mux.Unlock()
 	}()
 
 	logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).Debugln("Analyzing new packet..")
