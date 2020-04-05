@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"regexp"
 	"strconv"
 
@@ -48,6 +49,8 @@ var (
 	qid    uint16
 	destIP net.IP
 	err    error
+	lErr   *log.Logger
+	lOut   *log.Logger
 )
 
 var usage string = `
@@ -66,12 +69,15 @@ Options:
 `
 
 func main() {
+	lErr = log.New(os.Stderr, "\t[ERR] ", log.LstdFlags|log.Lmsgprefix)
+	lOut = log.New(os.Stdout, "\t", log.LstdFlags|log.Lmsgprefix)
+
 	err = parseArgs()
 	if err != nil {
-		log.Fatal(err)
+		lErr.Fatal(err)
 	}
 
-	fmt.Println("Started fappfon-proxy.")
+	lOut.Println("Started fappfon-proxy.")
 
 	q := &Queue{
 		id: qid,
@@ -84,9 +90,16 @@ func main() {
 	// Pass as packet handler the current instance because it implements nfqueue.PacketHandler interface
 	q.queue = nfqueue.NewQueue(q.id, q, queueCfg)
 
-	fmt.Printf("Attaching to netfilter_queue with id '%d'\n", q.id)
+	lOut.Printf("Attaching to netfilter_queue with id '%d'\n", q.id)
 
-	q.queue.Start() // blocking function
+	err = q.queue.Start() // blocking function
+	if err != nil {
+		if err.Error() == "Error in nfqueue_create_queue" {
+			lErr.Fatalf("%v: This is most likely a permission problem. Try to run this program as 'root' or run docker container with '--cap-add=NET_ADMIN'.", err)
+		} else {
+			lErr.Fatal(err)
+		}
+	}
 	defer q.queue.Stop()
 }
 
@@ -116,7 +129,7 @@ func parseArgs() error {
 
 // Handle a nfqueue packet. It implements nfqueue.PacketHandler interface.
 func (q *Queue) Handle(p *nfqueue.Packet) {
-	fmt.Println("Analyzing new packet..")
+	lOut.Println("Analyzing new packet..")
 	packet := gopacket.NewPacket(p.Buffer, layers.LayerTypeIPv4, gopacket.Default)
 	newPacket := parseSipPacket(packet)
 	if newPacket != nil {
@@ -131,7 +144,7 @@ func (q *Queue) Handle(p *nfqueue.Packet) {
 		}
 
 		p.Modify(buffer.Bytes())
-		fmt.Println("Sent modified packet.")
+		lOut.Println("Sent modified packet.")
 	} else {
 		p.Accept()
 	}
@@ -147,7 +160,7 @@ func parseSipPacket(packet gopacket.Packet) gopacket.Packet {
 		srcIP = ip.SrcIP
 
 		if net.IP.Equal(ip.SrcIP, destIP) {
-			fmt.Printf("Packet is from Fritz!Box, skipping.\n\n")
+			lOut.Printf("Packet is from Fritz!Box, skipping.\n\n")
 			return nil
 		}
 	} else {
@@ -165,7 +178,7 @@ func parseSipPacket(packet gopacket.Packet) gopacket.Packet {
 
 	sipLayer := packet.Layer(layers.LayerTypeSIP)
 	if sipLayer != nil {
-		fmt.Println("SIP packet detected.")
+		lOut.Println("SIP packet detected.")
 		sip, _ := sipLayer.(*layers.SIP)
 
 		ipv4Regexp := regexp.MustCompile(`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
@@ -188,7 +201,7 @@ func parseSipPacket(packet gopacket.Packet) gopacket.Packet {
 
 	// Check for errors
 	if err := packet.ErrorLayer(); err != nil {
-		fmt.Println("Error decoding some part of the packet:", err)
+		lErr.Println("Error decoding some part of the packet:", err)
 	}
 
 	return packet
