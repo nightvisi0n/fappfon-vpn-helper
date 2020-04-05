@@ -70,13 +70,13 @@ var usage string = `
 Daemon that forces FRITZ!App Fon to work over non FRITZ!Box VPNs.
 
 Usage:
-  fappfon-vpn-helper [-v|-vv] -q QUEUE -f FIP
+  fappfon-vpn-helper [-v|-vv] -q QUEUE -f FBOX
   fappfon-vpn-helper -h | --help
   fappfon-vpn-helper --version
 
 Options:
   -q QUEUE --queue=QUEUE  ID of netfilter_queue to attach.
-  -f FIP --fip=FIP        IPv4 of FRITZ!Box.
+  -f FBOX --fbox=FBOX     DNS name or IPv4 of FRITZ!Box.
   -v                      Increase verbosity of logging to INFO
   -vv                     Increase verbosity of logging to DEBUG
   -h --help               Show this help.
@@ -148,11 +148,16 @@ func parseArgs() error {
 		return err
 	}
 	qid = uint16(qIDInt)
-	ipStr, err := arguments.String("--fip")
+
+	fboxStr, err := arguments.String("--fbox")
 	if err != nil {
 		return err
 	}
-	destIP = net.ParseIP(ipStr)
+	fboxAddr, err := net.LookupHost(fboxStr)
+	if err != nil {
+		return err
+	}
+	destIP = net.ParseIP(fboxAddr[0])
 	if destIP == nil {
 		return errors.New("Unable to parse destination IPv4")
 	}
