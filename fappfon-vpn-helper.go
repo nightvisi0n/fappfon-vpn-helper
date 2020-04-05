@@ -20,9 +20,8 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
+	"math/big"
 	"net"
-	"os"
 	"regexp"
 	"strconv"
 
@@ -32,6 +31,8 @@ import (
 	"github.com/Telefonica/nfqueue"
 
 	"github.com/docopt/docopt-go"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Queue struct
@@ -46,38 +47,47 @@ var (
 	// BuildDate is the RFC3339 formatted UTC build date
 	BuildDate string = "undefined"
 
+	errIPv4Decoding error = errors.New("Unable to decode IPv4 layer")
+	errUDPDecoding  error = errors.New("Unable to decode UDP layer")
+	errSIPDecoding  error = errors.New("Unable to decode SIP layer")
+	errFRITZPacket  error = errors.New("Packet originates from FRITZ!Box")
+
 	qid    uint16
 	destIP net.IP
-	err    error
-	lErr   *log.Logger
-	lOut   *log.Logger
+
+	err error
+
+	packetCounter *big.Int
 )
 
 var usage string = `
 Daemon that forces FRITZ!App Fon to work over non FRITZ!Box VPNs.
 
 Usage:
-  fappfon-vpn-helper -q QUEUE -f FIP
+  fappfon-vpn-helper [-v|-vv] -q QUEUE -f FIP
   fappfon-vpn-helper -h | --help
-  fappfon-vpn-helper -v | --version
+  fappfon-vpn-helper --version
 
 Options:
   -q QUEUE --queue=QUEUE  ID of netfilter_queue to attach.
   -f FIP --fip=FIP        IPv4 of FRITZ!Box.
+  -v                      Increase verbosity of logging to INFO
+  -vv                     Increase verbosity of logging to DEBUG
   -h --help               Show this help.
-  -v --version            Show version.
+  --version               Show version.
 `
 
 func main() {
-	lErr = log.New(os.Stderr, "\t[ERR] ", log.LstdFlags|log.Lmsgprefix)
-	lOut = log.New(os.Stdout, "\t", log.LstdFlags|log.Lmsgprefix)
+	logrus.SetLevel(logrus.InfoLevel)
+
+	packetCounter = big.NewInt(0)
 
 	err = parseArgs()
 	if err != nil {
-		lErr.Fatal(err)
+		logrus.Fatal(err)
 	}
 
-	lOut.Println("Started fappfon-proxy.")
+	logrus.Infoln("Started fappfon-vpn-helper")
 
 	q := &Queue{
 		id: qid,
@@ -90,15 +100,15 @@ func main() {
 	// Pass as packet handler the current instance because it implements nfqueue.PacketHandler interface
 	q.queue = nfqueue.NewQueue(q.id, q, queueCfg)
 
-	lOut.Printf("Attaching to netfilter_queue with id '%d'\n", q.id)
+	logrus.Infof("Ready to process packets from netfilter_queue with id '%d'\n", q.id)
 
 	err = q.queue.Start() // blocking function
 	if err != nil {
 		if err.Error() == "Error in nfqueue_create_queue" {
-			lErr.Printf("%v: This is most likely a permission problem.", err)
-			lErr.Fatalf("Try to run this program as 'root' or run docker container with '--cap-add=NET_ADMIN'.")
+			logrus.Errorf("%v: This is most likely a permission problem", err)
+			logrus.Fatalf("Try to run this program as 'root' or run docker container with '--cap-add=NET_ADMIN'")
 		} else {
-			lErr.Fatal(err)
+			logrus.Fatal(err)
 		}
 	}
 	defer q.queue.Stop()
@@ -125,14 +135,42 @@ func parseArgs() error {
 		return errors.New("Unable to parse destination IPv4")
 	}
 
+	logLevel := arguments["-v"].(int)
+	switch logLevel {
+	case 1:
+		logrus.SetLevel(logrus.DebugLevel)
+		logrus.Debugln("Set log level to DEBUG")
+	case 2:
+		logrus.SetLevel(logrus.TraceLevel)
+		logrus.Traceln("Set log level to TRACE")
+	}
+
 	return nil
 }
 
 // Handle a nfqueue packet. It implements nfqueue.PacketHandler interface.
 func (q *Queue) Handle(p *nfqueue.Packet) {
-	lOut.Println("Analyzing new packet..")
+	defer increasePacketCounter()
+
+	logrus.Debugf("[%s] Analyzing new packet..\n", packetCounter)
+
 	packet := gopacket.NewPacket(p.Buffer, layers.LayerTypeIPv4, gopacket.Default)
-	newPacket := parseSipPacket(packet)
+	newPacket, err := parseSipPacket(packet)
+
+	switch err {
+	case nil:
+	case errFRITZPacket:
+		logrus.Debugf("[%s] %s\n", packetCounter, err)
+		p.Accept()
+		logrus.Debugf("[%s] Sent unmodified packet\n", packetCounter)
+		return
+	default:
+		logrus.Errorf("[%s] Error decoding some part of the packet: %s\n", packetCounter, err)
+		p.Accept()
+		logrus.Errorf("[%s] Sent unmodified packet\n", packetCounter)
+		return
+	}
+
 	if newPacket != nil {
 		buffer := gopacket.NewSerializeBuffer()
 		options := gopacket.SerializeOptions{
@@ -141,17 +179,24 @@ func (q *Queue) Handle(p *nfqueue.Packet) {
 		}
 		err = gopacket.SerializePacket(buffer, options, newPacket)
 		if err != nil {
-			log.Fatal(err)
+			logrus.Errorf("[%s] Error building a modified packet: %s\n", packetCounter, err)
+			p.Accept()
+			logrus.Errorf("[%s] Sent unmodified packet.\n", packetCounter)
+			return
 		}
 
 		p.Modify(buffer.Bytes())
-		lOut.Println("Sent modified packet.")
+		logrus.Debugf("[%s] Sent modified packet.\n", packetCounter)
 	} else {
 		p.Accept()
 	}
 }
 
-func parseSipPacket(packet gopacket.Packet) gopacket.Packet {
+func increasePacketCounter() {
+	packetCounter = packetCounter.Add(packetCounter, big.NewInt(1))
+}
+
+func parseSipPacket(packet gopacket.Packet) (gopacket.Packet, error) {
 	var srcIP net.IP
 
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
@@ -161,11 +206,10 @@ func parseSipPacket(packet gopacket.Packet) gopacket.Packet {
 		srcIP = ip.SrcIP
 
 		if net.IP.Equal(ip.SrcIP, destIP) {
-			lOut.Printf("Packet is from Fritz!Box, skipping.\n\n")
-			return nil
+			return nil, errFRITZPacket
 		}
 	} else {
-		return nil
+		return nil, errIPv4Decoding
 	}
 
 	udpLayer := packet.Layer(layers.LayerTypeUDP)
@@ -174,12 +218,11 @@ func parseSipPacket(packet gopacket.Packet) gopacket.Packet {
 
 		udp.SetNetworkLayerForChecksum(ipLayer.(*layers.IPv4))
 	} else {
-		return nil
+		return nil, errUDPDecoding
 	}
 
 	sipLayer := packet.Layer(layers.LayerTypeSIP)
 	if sipLayer != nil {
-		lOut.Println("SIP packet detected.")
 		sip, _ := sipLayer.(*layers.SIP)
 
 		ipv4Regexp := regexp.MustCompile(`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
@@ -197,13 +240,13 @@ func parseSipPacket(packet gopacket.Packet) gopacket.Packet {
 			sip.Headers["content-length"][0] = strconv.Itoa(len(sip.Payload()))
 		}
 	} else {
-		return nil
+		return nil, errSIPDecoding
 	}
 
 	// Check for errors
 	if err := packet.ErrorLayer(); err != nil {
-		lErr.Println("Error decoding some part of the packet:", err)
+		return nil, err.Error()
 	}
 
-	return packet
+	return packet, nil
 }
