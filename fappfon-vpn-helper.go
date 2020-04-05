@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // FRITZ!Box and FRITZ!App Fon are trademarks of AVM Computersysteme Vertriebs GmbH, Berlin, Germany.
+
 package main
 
 import (
@@ -150,7 +151,9 @@ func parseArgs() error {
 
 // Handle a nfqueue packet. It implements nfqueue.PacketHandler interface.
 func (q *Queue) Handle(p *nfqueue.Packet) {
-	defer increasePacketCounter()
+	defer func() {
+		packetCounter = packetCounter.Add(packetCounter, big.NewInt(1))
+	}()
 
 	logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).Debugln("Analyzing new packet..")
 
@@ -197,10 +200,6 @@ func (q *Queue) Handle(p *nfqueue.Packet) {
 	} else {
 		p.Accept()
 	}
-}
-
-func increasePacketCounter() {
-	packetCounter = packetCounter.Add(packetCounter, big.NewInt(1))
 }
 
 func parseSipPacket(packet gopacket.Packet) (gopacket.Packet, error) {
