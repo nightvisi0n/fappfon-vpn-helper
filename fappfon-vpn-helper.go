@@ -127,6 +127,7 @@ func main() {
 
 	err = q.queue.Start() // blocking function
 	if err != nil {
+		q = nil
 		if err.Error() == "Error in nfqueue_create_queue" {
 			logrus.Errorf("%v: This is most likely a permission problem", err)
 			logrus.Fatalf("Try to run this program as 'root' or run docker container with '--cap-add=NET_ADMIN'")
