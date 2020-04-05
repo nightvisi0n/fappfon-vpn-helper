@@ -102,6 +102,7 @@ func main() {
 
 	logrus.Infof("Ready to process packets from netfilter_queue with id '%d'\n", q.id)
 
+	defer q.queue.Stop()
 	err = q.queue.Start() // blocking function
 	if err != nil {
 		if err.Error() == "Error in nfqueue_create_queue" {
@@ -111,7 +112,6 @@ func main() {
 			logrus.Fatal(err)
 		}
 	}
-	defer q.queue.Stop()
 }
 
 func parseArgs() error {
