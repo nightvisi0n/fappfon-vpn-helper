@@ -26,4 +26,4 @@ FROM arm64v8/debian:buster
 COPY --from=BUILDER /usr/lib/aarch64-linux-gnu/ /usr/lib/aarch64-linux-gnu/
 COPY --from=BUILDER /go/fappfon-vpn-helper/fappfon-vpn-helper /fappfon-vpn-helper
 
-ENTRYPOINT ["/fappfon-proxy"]
+ENTRYPOINT ["/fappfon-vpn-helper"]
