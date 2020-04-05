@@ -88,8 +88,8 @@ func main() {
 	logrus.RegisterExitHandler(func() {
 		if q != nil {
 			_ = q.queue.Stop()
+			logrus.Infof("Stopping netfilter_queue with id '%d'\n", q.id)
 		}
-		logrus.Infof("Stopping netfilter_queue with id '%d'\n", q.id)
 	})
 
 	sigs := make(chan os.Signal)
