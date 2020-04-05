@@ -95,7 +95,8 @@ func main() {
 	err = q.queue.Start() // blocking function
 	if err != nil {
 		if err.Error() == "Error in nfqueue_create_queue" {
-			lErr.Fatalf("%v: This is most likely a permission problem. Try to run this program as 'root' or run docker container with '--cap-add=NET_ADMIN'.", err)
+			lErr.Printf("%v: This is most likely a permission problem.", err)
+			lErr.Fatalf("Try to run this program as 'root' or run docker container with '--cap-add=NET_ADMIN'.")
 		} else {
 			lErr.Fatal(err)
 		}
