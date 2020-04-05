@@ -50,13 +50,13 @@ var usage string = `
 Daemon that forces FRITZ!App Fon to work over non FRITZ!Box VPNs.
 
 Usage:
-  fappfon-vpn-helper -q QUEUE -d DEST
+  fappfon-vpn-helper -q QUEUE -f FIP
   fappfon-vpn-helper -h | --help
   fappfon-vpn-helper --version
 
 Options:
   -q QUEUE --queue=QUEUE  ID of netfilter_queue to attach.
-  -d DEST --dest=DEST     Destination IPv4.
+  -f FIP --fip=FIP        IPv4 of FRITZ!Box.
   -h --help               Show this help.
   -v --version            Show version.
 `
@@ -87,19 +87,23 @@ func main() {
 }
 
 func parseArgs() error {
-	arguments, _ := docopt.ParseArgs(usage, nil, version)
-	id, err := arguments.Int("--queue")
+	arguments, err := docopt.ParseArgs(usage, nil, version)
 	if err != nil {
 		return err
 	}
-	qid = uint16(id)
-	ipStr, err := arguments.String("--dest")
+
+	qIDInt, err := arguments.Int("--queue")
+	if err != nil {
+		return err
+	}
+	qid = uint16(qIDInt)
+	ipStr, err := arguments.String("--fip")
 	if err != nil {
 		return err
 	}
 	destIP = net.ParseIP(ipStr)
 	if destIP == nil {
-		return errors.New("unable to parse destination IPv4")
+		return errors.New("Unable to parse destination IPv4")
 	}
 
 	return nil
