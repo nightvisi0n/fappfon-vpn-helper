@@ -133,7 +133,6 @@ func parseSipPacket(packet gopacket.Packet) gopacket.Packet {
 
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
 	if ipLayer != nil {
-		// fmt.Println("IPv4 layer detected.")
 		ip, _ := ipLayer.(*layers.IPv4)
 
 		srcIP = ip.SrcIP
@@ -142,6 +141,8 @@ func parseSipPacket(packet gopacket.Packet) gopacket.Packet {
 			fmt.Printf("Packet is from Fritz!Box, skipping.\n\n")
 			return nil
 		}
+	} else {
+		return nil
 	}
 
 	udpLayer := packet.Layer(layers.LayerTypeUDP)
@@ -149,6 +150,8 @@ func parseSipPacket(packet gopacket.Packet) gopacket.Packet {
 		udp, _ := udpLayer.(*layers.UDP)
 
 		udp.SetNetworkLayerForChecksum(ipLayer.(*layers.IPv4))
+	} else {
+		return nil
 	}
 
 	sipLayer := packet.Layer(layers.LayerTypeSIP)
@@ -170,6 +173,8 @@ func parseSipPacket(packet gopacket.Packet) gopacket.Packet {
 			sip.BaseLayer.Payload = ipv4Regexp.ReplaceAll(sip.BaseLayer.Payload, []byte(srcIP.String()))
 			sip.Headers["content-length"][0] = strconv.Itoa(len(sip.Payload()))
 		}
+	} else {
+		return nil
 	}
 
 	// Check for errors
