@@ -152,7 +152,7 @@ func parseArgs() error {
 func (q *Queue) Handle(p *nfqueue.Packet) {
 	defer increasePacketCounter()
 
-	logrus.Debugf("[%s] Analyzing new packet..\n", packetCounter)
+	logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).Debugln("Analyzing new packet..")
 
 	packet := gopacket.NewPacket(p.Buffer, layers.LayerTypeIPv4, gopacket.Default)
 	newPacket, err := parseSipPacket(packet)
@@ -160,14 +160,18 @@ func (q *Queue) Handle(p *nfqueue.Packet) {
 	switch err {
 	case nil:
 	case errFRITZPacket:
-		logrus.Debugf("[%s] %s\n", packetCounter, err)
+		logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
+			Debugln(err)
 		p.Accept()
-		logrus.Debugf("[%s] Sent unmodified packet\n", packetCounter)
+		logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
+			Debugln("Sent unmodified packet")
 		return
 	default:
-		logrus.Errorf("[%s] Error decoding some part of the packet: %s\n", packetCounter, err)
+		logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
+			Errorln("Error decoding some part of the packet: ", packetCounter)
 		p.Accept()
-		logrus.Errorf("[%s] Sent unmodified packet\n", packetCounter)
+		logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
+			Errorln("Sent unmodified packet")
 		return
 	}
 
@@ -179,14 +183,17 @@ func (q *Queue) Handle(p *nfqueue.Packet) {
 		}
 		err = gopacket.SerializePacket(buffer, options, newPacket)
 		if err != nil {
-			logrus.Errorf("[%s] Error building a modified packet: %s\n", packetCounter, err)
+			logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
+				Errorln("Error building a modified packet: ", err)
 			p.Accept()
-			logrus.Errorf("[%s] Sent unmodified packet.\n", packetCounter)
+			logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
+				Errorln("Sent unmodified packet")
 			return
 		}
 
 		p.Modify(buffer.Bytes())
-		logrus.Debugf("[%s] Sent modified packet.\n", packetCounter)
+		logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
+			Debugln("Sent modified packet")
 	} else {
 		p.Accept()
 	}
