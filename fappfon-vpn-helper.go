@@ -77,8 +77,8 @@ Usage:
 Options:
   -q QUEUE --queue=QUEUE  ID of netfilter_queue to attach.
   -f FBOX --fbox=FBOX     DNS name or IPv4 of FRITZ!Box.
-  -v                      Increase verbosity of logging to INFO
-  -vv                     Increase verbosity of logging to DEBUG
+  -v                      Increase verbosity of logging to DEBUG
+  -vv                     Increase verbosity of logging to TRACE
   -h --help               Show this help.
   --version               Show version.
 `
@@ -91,8 +91,11 @@ func main() {
 		if q != nil {
 			mux.Lock()
 			_ = q.queue.Stop()
-			logrus.Infof("Stopping netfilter_queue with id '%d'\n", q.id)
+			logrus.Infof("Stopping netfilter_queue with id '%d'", q.id)
 		}
+	})
+	logrus.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: true,
 	})
 
 	sigs := make(chan os.Signal)
@@ -123,7 +126,7 @@ func main() {
 	// Pass as packet handler the current instance because it implements nfqueue.PacketHandler interface
 	q.queue = nfqueue.NewQueue(q.id, q, queueCfg)
 
-	logrus.Infof("Ready to process packets from netfilter_queue with id '%d'\n", q.id)
+	logrus.Infof("Ready to process packets from netfilter_queue with id '%d'", q.id)
 
 	err = q.queue.Start() // blocking function
 	if err != nil {
@@ -185,26 +188,33 @@ func (q *Queue) Handle(p *nfqueue.Packet) {
 		mux.Unlock()
 	}()
 
-	logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).Debugln("Analyzing new packet..")
+	logrus.Tracef("[%s] Analyzing new packet..", packetCounter.String())
 
 	packet := gopacket.NewPacket(p.Buffer, layers.LayerTypeIPv4, gopacket.Default)
-	newPacket, err := parseSipPacket(packet)
+
+	newPacket, fields, err := parseSipPacket(packet)
+	reducedFields := logrus.Fields{"clientID": fields["clientID"]}
 
 	switch err {
 	case nil:
 	case errFRITZPacket:
-		logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
-			Debugln(err)
+		var fritzMsg string
+		if fields["responseStatus"] != nil {
+			fritzMsg = fmt.Sprint(fields["responseStatus"])
+		} else {
+			fritzMsg = fmt.Sprint(fields["sipMethod"])
+		}
+		logrus.WithFields(reducedFields).
+			Debugf("[%s] Got '%s' packet from FRITZ!Box, ignoring", packetCounter.String(), fritzMsg)
 		p.Accept()
-		logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
-			Debugln("Sent unmodified packet")
+		logrus.WithFields(fields).
+			Tracef("[%s] Sent unmodified packet", packetCounter.String())
 		return
 	default:
-		logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
-			Errorln("Error decoding some part of the packet: ", packetCounter)
+		logrus.WithFields(fields).
+			Errorf("[%s] Error decoding some part of the packet: %s", packetCounter.String(), packetCounter)
 		p.Accept()
-		logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
-			Errorln("Sent unmodified packet")
+		logrus.WithFields(fields).Errorf("[%s] Sent unmodified packet", packetCounter.String())
 		return
 	}
 
@@ -214,75 +224,94 @@ func (q *Queue) Handle(p *nfqueue.Packet) {
 			ComputeChecksums: true,
 			FixLengths:       true,
 		}
+		logrus.WithFields(reducedFields).
+			Debugf("[%s] Got '%s' packet from client, building modified packet", packetCounter.String(), fields["sipMethod"])
 		err = gopacket.SerializePacket(buffer, options, newPacket)
 		if err != nil {
-			logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
-				Errorln("Error building a modified packet: ", err)
+			logrus.WithFields(fields).Errorf("[%s] Error building a modified packet: %s", packetCounter.String(), err)
 			p.Accept()
-			logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
-				Errorln("Sent unmodified packet")
+			logrus.WithFields(fields).Errorf("[%s] Sent unmodified packet", packetCounter.String())
 			return
 		}
 
 		p.Modify(buffer.Bytes())
-		logrus.WithFields(logrus.Fields{"packetNum": packetCounter}).
-			Debugln("Sent modified packet")
+		logrus.WithFields(fields).Tracef("[%s] Sent modified packet", packetCounter.String())
 	} else {
 		p.Accept()
 	}
 }
 
-func parseSipPacket(packet gopacket.Packet) (gopacket.Packet, error) {
-	var srcIP net.IP
+func parseSipPacket(packet gopacket.Packet) (gopacket.Packet, logrus.Fields, error) {
+	var (
+		srcIP       string
+		fritzPacket bool
+		fields      logrus.Fields = make(logrus.Fields)
+	)
 
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
 	if ipLayer != nil {
 		ip, _ := ipLayer.(*layers.IPv4)
 
-		srcIP = ip.SrcIP
+		srcIP = ip.SrcIP.String()
+		fields["srcIP"] = srcIP
+		fields["dstIP"] = ip.DstIP.String()
 
 		if net.IP.Equal(ip.SrcIP, destIP) {
-			return nil, errFRITZPacket
+			fritzPacket = true
 		}
 	} else {
-		return nil, errIPv4Decoding
+		return nil, nil, errIPv4Decoding
 	}
 
 	udpLayer := packet.Layer(layers.LayerTypeUDP)
 	if udpLayer != nil {
 		udp, _ := udpLayer.(*layers.UDP)
-
+		fields["srcPort"] = udp.SrcPort.String()
+		fields["dstPort"] = udp.DstPort.String()
 		udp.SetNetworkLayerForChecksum(ipLayer.(*layers.IPv4))
 	} else {
-		return nil, errUDPDecoding
+		return nil, fields, errUDPDecoding
 	}
 
 	sipLayer := packet.Layer(layers.LayerTypeSIP)
 	if sipLayer != nil {
 		sip, _ := sipLayer.(*layers.SIP)
 
-		ipv4Regexp := regexp.MustCompile(`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
+		if !fritzPacket {
+			fields["sipMethod"] = sip.Method.String()
 
-		for i, v := range sip.Headers["via"] {
-			sip.Headers["via"][i] = ipv4Regexp.ReplaceAllString(v, srcIP.String())
+			ipv4Regexp := regexp.MustCompile(`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
+			for i, v := range sip.Headers["via"] {
+				sip.Headers["via"][i] = ipv4Regexp.ReplaceAllString(v, srcIP)
+			}
+			for i, c := range sip.Headers["contact"] {
+				sip.Headers["contact"][i] = ipv4Regexp.ReplaceAllString(c, srcIP)
+			}
+			if len(sip.Payload()) > 0 {
+				sip.BaseLayer.Payload = ipv4Regexp.ReplaceAll(sip.BaseLayer.Payload, []byte(srcIP))
+				sip.Headers["content-length"][0] = strconv.Itoa(len(sip.Payload()))
+			}
+		} else {
+			if sip.IsResponse {
+				fields["responseStatus"] = fmt.Sprintf("%d %s", sip.ResponseCode, sip.ResponseStatus)
+			} else {
+				fields["sipMethod"] = sip.Method.String()
+			}
 		}
 
-		for i, c := range sip.Headers["contact"] {
-			sip.Headers["contact"][i] = ipv4Regexp.ReplaceAllString(c, srcIP.String())
-		}
-
-		if len(sip.Payload()) > 0 {
-			sip.BaseLayer.Payload = ipv4Regexp.ReplaceAll(sip.BaseLayer.Payload, []byte(srcIP.String()))
-			sip.Headers["content-length"][0] = strconv.Itoa(len(sip.Payload()))
-		}
+		fromUserRegexp := regexp.MustCompile(`.*:(.*)@.*`)
+		fields["clientID"] = fromUserRegexp.FindStringSubmatch(sip.GetFrom())[1]
 	} else {
-		return nil, errSIPDecoding
+		return nil, fields, errSIPDecoding
 	}
 
 	// Check for errors
 	if err := packet.ErrorLayer(); err != nil {
-		return nil, err.Error()
+		return nil, fields, err.Error()
 	}
 
-	return packet, nil
+	if fritzPacket {
+		return nil, fields, errFRITZPacket
+	}
+	return packet, fields, nil
 }
