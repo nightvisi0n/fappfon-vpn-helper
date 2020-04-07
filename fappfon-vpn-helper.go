@@ -53,7 +53,7 @@ var (
 	BuildDate string = "undefined"
 
 	errIPv4Decoding error = errors.New("Unable to decode IPv4 layer")
-	errUDPDecoding  error = errors.New("Unable to decode UDP layer")
+	errL3Decoding   error = errors.New("Unable to decode TCP/UDP layer")
 	errSIPDecoding  error = errors.New("Unable to decode SIP layer")
 	errFRITZPacket  error = errors.New("Packet originates from FRITZ!Box")
 
@@ -264,13 +264,19 @@ func parseSipPacket(packet gopacket.Packet) (gopacket.Packet, logrus.Fields, err
 	}
 
 	udpLayer := packet.Layer(layers.LayerTypeUDP)
+	tcpLayer := packet.Layer(layers.LayerTypeTCP)
 	if udpLayer != nil {
 		udp, _ := udpLayer.(*layers.UDP)
 		fields["srcPort"] = udp.SrcPort.String()
 		fields["dstPort"] = udp.DstPort.String()
 		udp.SetNetworkLayerForChecksum(ipLayer.(*layers.IPv4))
+	} else if tcpLayer != nil {
+		tcp, _ := tcpLayer.(*layers.TCP)
+		fields["srcPort"] = tcp.SrcPort.String()
+		fields["dstPort"] = tcp.DstPort.String()
+		tcp.SetNetworkLayerForChecksum(ipLayer.(*layers.IPv4))
 	} else {
-		return nil, fields, errUDPDecoding
+		return nil, fields, errL3Decoding
 	}
 
 	sipLayer := packet.Layer(layers.LayerTypeSIP)
